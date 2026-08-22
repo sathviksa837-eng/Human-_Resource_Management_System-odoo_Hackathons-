@@ -1,5 +1,5 @@
-/* Dayflow HRMS - Payroll Module */
-import { db } from './db.js';
+/* Dayflow HRMS - Payroll Module (Pro-Rated Absence Deduction Formula) */
+import { db, calculateProRatedSalary } from './db.js';
 import { Auth } from './auth.js';
 
 export class Payroll {
@@ -8,84 +8,98 @@ export class Payroll {
     const isAdmin = Auth.isAdmin();
     const allUsers = db.getUsers();
 
-    const currentSalary = user.salary || { basic: 5000, hra: 1500, allowances: 1000, deductions: 500 };
-    const netSalary = currentSalary.basic + currentSalary.hra + currentSalary.allowances - currentSalary.deductions;
+    // Calculate current user's pro-rated salary based on attendance formula
+    const userCalc = calculateProRatedSalary(user);
 
     const html = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
           <h2 style="font-size: 1.5rem; font-weight: 800;">Payroll & Salary Management</h2>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">View salary structures, generate monthly payslips, and manage compensation.</p>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">
+            Automated attendance-based salary adjustments: <code style="color: var(--primary-accent); font-weight: 700;">Salary × (Days Present / Total Days in Month)</code>
+          </p>
         </div>
         <button class="btn btn-accent" id="btn-generate-payslip">
           📄 Generate Pay Slip (PDF Print)
         </button>
       </div>
 
-      <!-- Overview Cards -->
+      <!-- Overview Cards for Logged-In User -->
       <div class="grid-stats" style="margin-bottom: 1.5rem;">
         <div class="stat-card">
           <div class="stat-details">
-            <p>Monthly Gross Salary</p>
-            <h3>$${(currentSalary.basic + currentSalary.hra + currentSalary.allowances).toLocaleString()}</h3>
-            <p style="color: var(--accent); margin-top: 0.25rem;">Before deductions</p>
+            <p>Monthly Base Wage</p>
+            <h3>₹ ${userCalc.baseMonthlyWage.toLocaleString()}</h3>
+            <p style="color: var(--accent); margin-top: 0.25rem;">Full month standard wage</p>
           </div>
           <div class="stat-icon primary">💵</div>
         </div>
 
         <div class="stat-card">
           <div class="stat-details">
-            <p>Total Deductions (PF/Tax)</p>
-            <h3>$${currentSalary.deductions.toLocaleString()}</h3>
-            <p style="color: var(--status-absent); margin-top: 0.25rem;">Monthly withholdings</p>
+            <p>Absence Salary Deduction</p>
+            <h3 style="color: var(--status-absent);">- ₹ ${Math.round(userCalc.absenceDeduction).toLocaleString()}</h3>
+            <p style="color: var(--status-absent); margin-top: 0.25rem;">${userCalc.absentDays} Days Absent (${userCalc.effectivePresentDays}/${userCalc.totalDaysInMonth} Days Present)</p>
           </div>
           <div class="stat-icon danger">📉</div>
         </div>
 
         <div class="stat-card">
           <div class="stat-details">
-            <p>Net Take-Home Pay</p>
-            <h3>$${netSalary.toLocaleString()}</h3>
-            <p style="color: var(--status-present); margin-top: 0.25rem;">Credited to account</p>
+            <p>Net Payable Take-Home</p>
+            <h3 style="color: var(--status-present);">₹ ${Math.round(userCalc.finalNetSalary).toLocaleString()}</h3>
+            <p style="color: var(--status-present); margin-top: 0.25rem;">Pro-rated Credited Net Pay</p>
           </div>
           <div class="stat-icon success">💰</div>
         </div>
       </div>
 
       ${isAdmin ? `
-        <!-- Admin Master Payroll Table -->
+        <!-- Admin Master Payroll Table (Pro-Rated Calculations for All Staff) -->
         <div class="card" style="margin-bottom: 1.5rem;">
-          <div class="card-header">
-            <h3 class="card-title">Organization Master Payroll (Admin Control)</h3>
+          <div class="card-header" style="flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h3 class="card-title">Organization Master Payroll (Attendance-Adjusted)</h3>
+              <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem;">
+                Employee salaries are automatically adjusted based on days present vs absent.
+              </p>
+            </div>
           </div>
           <div class="table-container">
             <table class="table">
               <thead>
                 <tr>
                   <th>Employee</th>
-                  <th>Basic Pay</th>
-                  <th>HRA</th>
-                  <th>Allowances</th>
-                  <th>Deductions</th>
-                  <th>Net Monthly Salary</th>
+                  <th>Base Monthly Wage</th>
+                  <th>Attendance Ratio</th>
+                  <th>Absence Deduction</th>
+                  <th>Pro-Rated Gross</th>
+                  <th>Final Net Payable</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 ${allUsers.map(emp => {
-                  const sal = emp.salary || { basic: 0, hra: 0, allowances: 0, deductions: 0 };
-                  const net = sal.basic + sal.hra + sal.allowances - sal.deductions;
+                  const calc = calculateProRatedSalary(emp);
                   return `
                     <tr>
                       <td>
                         <strong>${emp.name}</strong>
                         <div style="font-size: 0.75rem; color: var(--text-muted);">${emp.id} • ${emp.department}</div>
                       </td>
-                      <td>$${sal.basic.toLocaleString()}</td>
-                      <td>$${sal.hra.toLocaleString()}</td>
-                      <td>$${sal.allowances.toLocaleString()}</td>
-                      <td>$${sal.deductions.toLocaleString()}</td>
-                      <td><strong style="color: var(--status-present);">$${net.toLocaleString()}</strong></td>
+                      <td>₹ ${calc.baseMonthlyWage.toLocaleString()}</td>
+                      <td>
+                        <span class="badge ${calc.absentDays > 0 ? 'badge-warning' : 'badge-success'}" style="font-family: monospace;">
+                          ${calc.effectivePresentDays} / ${calc.totalDaysInMonth} Days
+                        </span>
+                      </td>
+                      <td>
+                        <span style="color: ${calc.absentDays > 0 ? 'var(--status-absent)' : 'var(--text-muted)'}; font-weight: 600;">
+                          ${calc.absentDays > 0 ? `- ₹ ${Math.round(calc.absenceDeduction).toLocaleString()}` : '₹ 0 (Full Present)'}
+                        </span>
+                      </td>
+                      <td>₹ ${Math.round(calc.proRatedGross).toLocaleString()}</td>
+                      <td><strong style="color: var(--status-present); font-size: 0.95rem;">₹ ${Math.round(calc.finalNetSalary).toLocaleString()}</strong></td>
                       <td>
                         <button class="btn btn-secondary btn-sm btn-print-emp-slip" data-id="${emp.id}">
                           View Pay Slip
@@ -100,45 +114,45 @@ export class Payroll {
         </div>
       ` : ''}
 
-      <!-- Personal Salary Breakdown Card -->
+      <!-- Personal Salary & Absence Deduction Formula Breakdown Card -->
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">My Compensation Breakdown (Read-Only)</h3>
-          <span class="role-badge employee">Active Salary Structure</span>
+          <h3 class="card-title">Attendance-Adjusted Salary Calculation Breakdown</h3>
+          <span class="role-badge employee">Pro-Rated Formula Active</span>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
           <div>
-            <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-muted); font-weight: 700;">EARNINGS BREAKDOWN</h4>
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <div style="display: flex; justify-content: space-between; padding: 0.65rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
-                <span>Basic Salary</span>
-                <strong>$${currentSalary.basic.toLocaleString()}</strong>
+            <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-muted); font-weight: 700;">PRO-RATED SALARY FORMULA</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+              <div style="padding: 0.85rem; background: var(--bg-surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Standard Base Wage</div>
+                <strong style="font-size: 1.05rem;">₹ ${userCalc.baseMonthlyWage.toLocaleString()} / Month</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 0.65rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
-                <span>House Rent Allowance (HRA)</span>
-                <strong>$${currentSalary.hra.toLocaleString()}</strong>
+              <div style="padding: 0.85rem; background: var(--bg-surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Attendance Ratio (Days Present / Total Days)</div>
+                <strong style="font-size: 1.05rem; color: var(--primary-accent);">${userCalc.effectivePresentDays} Days Present ÷ ${userCalc.totalDaysInMonth} Days = ${(userCalc.attendanceRatio * 100).toFixed(1)}%</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 0.65rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
-                <span>Special & Performance Allowance</span>
-                <strong>$${currentSalary.allowances.toLocaleString()}</strong>
+              <div style="padding: 0.85rem; background: var(--bg-surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Formula: Salary × (Days Present / Total Days)</div>
+                <strong style="font-size: 1.05rem; color: var(--status-present);">₹ ${userCalc.baseMonthlyWage.toLocaleString()} × (${userCalc.effectivePresentDays}/${userCalc.totalDaysInMonth}) = ₹ ${Math.round(userCalc.proRatedGross).toLocaleString()}</strong>
               </div>
             </div>
           </div>
 
           <div>
-            <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-muted); font-weight: 700;">DEDUCTIONS & TAXES</h4>
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <div style="display: flex; justify-content: space-between; padding: 0.65rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
-                <span>Provident Fund (PF 60%)</span>
-                <strong>$${Math.round(currentSalary.deductions * 0.6).toLocaleString()}</strong>
+            <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-muted); font-weight: 700;">DEDUCTIONS & FINAL PAYOUT</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+              <div style="display: flex; justify-content: space-between; padding: 0.75rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
+                <span>Absence Deduction (${userCalc.absentDays} Days Absent)</span>
+                <strong style="color: var(--status-absent);">- ₹ ${Math.round(userCalc.absenceDeduction).toLocaleString()}</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 0.65rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
-                <span>Income Tax Withholding (40%)</span>
-                <strong>$${Math.round(currentSalary.deductions * 0.4).toLocaleString()}</strong>
+              <div style="display: flex; justify-content: space-between; padding: 0.75rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm);">
+                <span>Fixed Deductions (PF / Tax)</span>
+                <strong>- ₹ ${userCalc.fixedDeductions.toLocaleString()}</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 0.65rem; background: var(--bg-surface-secondary); border-radius: var(--radius-sm); border: 1px solid var(--primary);">
-                <strong style="color: var(--primary);">NET MONTHLY PAYOUT</strong>
-                <strong style="color: var(--primary); font-size: 1.1rem;">$${netSalary.toLocaleString()}</strong>
+              <div style="display: flex; justify-content: space-between; padding: 0.85rem; background: var(--bg-surface-secondary); border-radius: var(--radius-md); border: 1px solid var(--primary);">
+                <strong style="color: var(--primary);">FINAL NET PAYABLE AMOUNT</strong>
+                <strong style="color: var(--primary); font-size: 1.15rem;">₹ ${Math.round(userCalc.finalNetSalary).toLocaleString()}</strong>
               </div>
             </div>
           </div>
@@ -153,7 +167,7 @@ export class Payroll {
             <button class="btn btn-secondary btn-sm" id="btn-close-payslip">✕</button>
           </div>
           <div class="modal-body" id="payslip-print-content" style="background: white; color: #1e293b; padding: 2rem; border-radius: var(--radius-md);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); padding-bottom: 1rem; margin-bottom: 1.25rem;">
               <div>
                 <h2 style="color: var(--primary); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em;">DAYFLOW HRMS</h2>
                 <p style="font-size: 0.8rem; color: #64748b;">Every workday, perfectly aligned.</p>
@@ -164,7 +178,7 @@ export class Payroll {
               </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; font-size: 0.875rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; font-size: 0.875rem;">
               <div>
                 <p><strong>Employee Name:</strong> <span id="ps-emp-name">${user.name}</span></p>
                 <p><strong>Employee ID:</strong> <span id="ps-emp-id">${user.id}</span></p>
@@ -177,45 +191,41 @@ export class Payroll {
               </div>
             </div>
 
-            <table class="table" style="margin-bottom: 1.5rem; border: 1px solid #e2e8f0; width: 100%;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.75rem; border-radius: 6px; margin-bottom: 1.25rem; font-size: 0.85rem;">
+              <strong style="color: #0f172a;">Attendance Formula Calculation:</strong>
+              <div style="color: #475569; margin-top: 0.2rem;">
+                <span id="ps-att-summary">${userCalc.effectivePresentDays} / ${userCalc.totalDaysInMonth} Days Present (${userCalc.absentDays} Days Absent)</span>
+                <div>Formula: Base Wage <span id="ps-base-wage">₹ ${userCalc.baseMonthlyWage.toLocaleString()}</span> × (<span id="ps-ratio-text">${userCalc.effectivePresentDays}/${userCalc.totalDaysInMonth}</span>) = <strong style="color: #10b981;" id="ps-prorated-gross">₹ ${Math.round(userCalc.proRatedGross).toLocaleString()}</strong></div>
+              </div>
+            </div>
+
+            <table class="table" style="margin-bottom: 1.25rem; border: 1px solid #e2e8f0; width: 100%;">
               <thead>
                 <tr style="background: #f8fafc;">
-                  <th style="padding: 0.5rem 0.75rem;">Earnings</th>
-                  <th style="padding: 0.5rem 0.75rem;">Amount ($)</th>
-                  <th style="padding: 0.5rem 0.75rem;">Deductions</th>
-                  <th style="padding: 0.5rem 0.75rem;">Amount ($)</th>
+                  <th style="padding: 0.5rem 0.75rem;">Earnings Item</th>
+                  <th style="padding: 0.5rem 0.75rem;">Amount (₹)</th>
+                  <th style="padding: 0.5rem 0.75rem;">Deductions Item</th>
+                  <th style="padding: 0.5rem 0.75rem;">Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style="padding: 0.5rem 0.75rem;">Basic Salary</td>
-                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-basic">$${currentSalary.basic.toLocaleString()}</span></td>
-                  <td style="padding: 0.5rem 0.75rem;">Provident Fund</td>
-                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-pf">$${Math.round(currentSalary.deductions * 0.6).toLocaleString()}</span></td>
+                  <td style="padding: 0.5rem 0.75rem;">Base Monthly Wage</td>
+                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-basic">₹ ${userCalc.baseMonthlyWage.toLocaleString()}</span></td>
+                  <td style="padding: 0.5rem 0.75rem;">Absence Salary Deduction</td>
+                  <td style="padding: 0.5rem 0.75rem; color: #ef4444;"><span id="ps-absent-ded">- ₹ ${Math.round(userCalc.absenceDeduction).toLocaleString()}</span></td>
                 </tr>
                 <tr>
-                  <td style="padding: 0.5rem 0.75rem;">HRA</td>
-                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-hra">$${currentSalary.hra.toLocaleString()}</span></td>
-                  <td style="padding: 0.5rem 0.75rem;">Tax Withholding</td>
-                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-tax">$${Math.round(currentSalary.deductions * 0.4).toLocaleString()}</span></td>
-                </tr>
-                <tr>
-                  <td style="padding: 0.5rem 0.75rem;">Allowances</td>
-                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-allowances">$${currentSalary.allowances.toLocaleString()}</span></td>
-                  <td style="padding: 0.5rem 0.75rem;">-</td>
-                  <td style="padding: 0.5rem 0.75rem;">-</td>
-                </tr>
-                <tr style="font-weight: bold; background: #f1f5f9;">
-                  <td style="padding: 0.5rem 0.75rem;">Gross Earnings</td>
-                  <td style="padding: 0.5rem 0.75rem;">$<span id="ps-gross">${(currentSalary.basic + currentSalary.hra + currentSalary.allowances).toLocaleString()}</span></td>
-                  <td style="padding: 0.5rem 0.75rem;">Total Deductions</td>
-                  <td style="padding: 0.5rem 0.75rem;">$<span id="ps-deductions">${currentSalary.deductions.toLocaleString()}</span></td>
+                  <td style="padding: 0.5rem 0.75rem;">Pro-Rated Gross Earnings</td>
+                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-gross">₹ ${Math.round(userCalc.proRatedGross).toLocaleString()}</span></td>
+                  <td style="padding: 0.5rem 0.75rem;">Fixed Withholdings (PF/Tax)</td>
+                  <td style="padding: 0.5rem 0.75rem;"><span id="ps-fixed-ded">₹ ${userCalc.fixedDeductions.toLocaleString()}</span></td>
                 </tr>
               </tbody>
             </table>
 
             <div style="background: #f3eff2; padding: 1rem; border-radius: 6px; text-align: center;">
-              <h3 style="color: var(--primary); margin: 0; font-size: 1.25rem; font-weight: 800;">NET PAYABLE AMOUNT: $<span id="ps-net">${netSalary.toLocaleString()}</span></h3>
+              <h3 style="color: var(--primary); margin: 0; font-size: 1.25rem; font-weight: 800;">NET PAYABLE AMOUNT: <span id="ps-net">₹ ${Math.round(userCalc.finalNetSalary).toLocaleString()}</span></h3>
             </div>
           </div>
           <div class="modal-footer">
@@ -246,8 +256,7 @@ export class Payroll {
           const empId = e.currentTarget.getAttribute('data-id');
           const emp = db.getUserById(empId);
           if (emp) {
-            const sal = emp.salary || { basic: 0, hra: 0, allowances: 0, deductions: 0 };
-            const net = sal.basic + sal.hra + sal.allowances - sal.deductions;
+            const calc = calculateProRatedSalary(emp);
             
             container.querySelector('#ps-emp-name').innerText = emp.name;
             container.querySelector('#ps-emp-id').innerText = emp.id;
@@ -255,14 +264,16 @@ export class Payroll {
             container.querySelector('#ps-emp-pos').innerText = emp.position;
             container.querySelector('#ps-emp-join').innerText = emp.joinDate;
 
-            container.querySelector('#ps-basic').innerText = '$' + sal.basic.toLocaleString();
-            container.querySelector('#ps-hra').innerText = '$' + sal.hra.toLocaleString();
-            container.querySelector('#ps-allowances').innerText = '$' + sal.allowances.toLocaleString();
-            container.querySelector('#ps-pf').innerText = '$' + Math.round(sal.deductions * 0.6).toLocaleString();
-            container.querySelector('#ps-tax').innerText = '$' + Math.round(sal.deductions * 0.4).toLocaleString();
-            container.querySelector('#ps-gross').innerText = (sal.basic + sal.hra + sal.allowances).toLocaleString();
-            container.querySelector('#ps-deductions').innerText = sal.deductions.toLocaleString();
-            container.querySelector('#ps-net').innerText = net.toLocaleString();
+            container.querySelector('#ps-att-summary').innerText = `${calc.effectivePresentDays} / ${calc.totalDaysInMonth} Days Present (${calc.absentDays} Days Absent)`;
+            container.querySelector('#ps-base-wage').innerText = '₹ ' + calc.baseMonthlyWage.toLocaleString();
+            container.querySelector('#ps-ratio-text').innerText = `${calc.effectivePresentDays}/${calc.totalDaysInMonth}`;
+            container.querySelector('#ps-prorated-gross').innerText = '₹ ' + Math.round(calc.proRatedGross).toLocaleString();
+
+            container.querySelector('#ps-basic').innerText = '₹ ' + calc.baseMonthlyWage.toLocaleString();
+            container.querySelector('#ps-absent-ded').innerText = '- ₹ ' + Math.round(calc.absenceDeduction).toLocaleString();
+            container.querySelector('#ps-gross').innerText = '₹ ' + Math.round(calc.proRatedGross).toLocaleString();
+            container.querySelector('#ps-fixed-ded').innerText = '₹ ' + calc.fixedDeductions.toLocaleString();
+            container.querySelector('#ps-net').innerText = '₹ ' + Math.round(calc.finalNetSalary).toLocaleString();
 
             openModal();
           }

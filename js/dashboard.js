@@ -1,5 +1,5 @@
 /* Dayflow HRMS - Dashboard Module */
-import { db, generateEmployeeID } from './db.js';
+import { db, generateEmployeeID, calculateProRatedSalary } from './db.js';
 import { Auth } from './auth.js';
 
 export class Dashboard {
@@ -200,7 +200,14 @@ export class Dashboard {
   }
 
   static renderAdminDashboard(container, user, onNavigate) {
-    const allUsers = db.getUsers();
+    const currentHrId = user.hrId || 1;
+    const allHrs = db.getHRs();
+    const activeHrObj = db.getHRById(currentHrId) || allHrs[0];
+
+    const approvedUsers = db.getApprovedUsers(currentHrId);
+    const pendingUsers = db.getPendingUsers(currentHrId);
+    const allApprovedCompanyUsers = db.getApprovedUsers();
+    
     const allAttendance = db.getAttendance();
     const allLeaves = db.getLeaves();
 
@@ -209,26 +216,36 @@ export class Dashboard {
     const pendingLeaves = allLeaves.filter(l => l.status === 'Pending').length;
 
     let totalMonthlyPayroll = 0;
-    allUsers.forEach(u => {
-      const sal = u.salary || { basic: 0, hra: 0, allowances: 0, deductions: 0 };
-      totalMonthlyPayroll += (sal.basic + sal.hra + sal.allowances - sal.deductions);
+    approvedUsers.forEach(u => {
+      const calc = calculateProRatedSalary(u);
+      totalMonthlyPayroll += calc.finalNetSalary;
     });
 
     const html = `
       <div style="margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
         <div>
-          <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--text-main);">Admin & HR Command Center</h2>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">Overview of company workforce, attendance metrics, and pending approvals.</p>
+          <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.6rem;">
+            <span>🛡️ ${activeHrObj.name} Command Center</span>
+            <span style="font-size: 0.85rem; font-weight: 600; background: var(--bg-surface-secondary); color: var(--primary-accent); padding: 0.2rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+              ${activeHrObj.department} HR
+            </span>
+          </h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">
+            Managing <strong>7 Assigned Employees</strong> & Candidate Applications for ${activeHrObj.department}.
+          </p>
         </div>
-        <span class="role-badge admin">HR Administrator Privileges</span>
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Logged in HR:</span>
+          <span class="role-badge admin">${activeHrObj.name} (${activeHrObj.hrCode})</span>
+        </div>
       </div>
 
       <div class="grid-stats">
         <div class="stat-card">
           <div class="stat-details">
-            <p>Total Workforce</p>
-            <h3>${allUsers.length} Employees</h3>
-            <p style="color: var(--accent); margin-top: 0.25rem;">Active staff</p>
+            <p>Assigned HR Workforce</p>
+            <h3>${approvedUsers.length} Employees</h3>
+            <p style="color: var(--accent); margin-top: 0.25rem;">7 Staff under ${activeHrObj.name}</p>
           </div>
           <div class="stat-icon primary">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
@@ -248,7 +265,7 @@ export class Dashboard {
 
         <div class="stat-card" style="cursor: pointer;" id="card-admin-pending">
           <div class="stat-details">
-            <p>Pending Approvals</p>
+            <p>Pending Leaves</p>
             <h3>${pendingLeaves} Requests</h3>
             <p style="color: var(--status-halfday); margin-top: 0.25rem;">Requires HR review →</p>
           </div>
@@ -259,14 +276,92 @@ export class Dashboard {
 
         <div class="stat-card" style="cursor: pointer;" id="card-admin-payroll">
           <div class="stat-details">
-            <p>Monthly Payroll</p>
+            <p>Team Payroll Commitment</p>
             <h3>$${totalMonthlyPayroll.toLocaleString()}</h3>
-            <p style="color: var(--primary-accent); margin-top: 0.25rem;">Total commitment →</p>
+            <p style="color: var(--primary-accent); margin-top: 0.25rem;">Monthly net commitment →</p>
           </div>
           <div class="stat-icon accent">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           </div>
         </div>
+      </div>
+
+      <!-- New Applicants Section (Assigned Specifically to Logged-in HR) -->
+      <div class="card" style="margin-bottom: 1.5rem; border: 1px solid var(--primary-light);">
+        <div class="card-header" style="flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h3 class="card-title" style="display: flex; align-items: center; gap: 0.6rem;">
+              📋 New Applicants (Assigned to ${activeHrObj.name})
+              <span class="badge badge-warning" style="font-size: 0.85rem; padding: 0.25rem 0.65rem;">
+                ${pendingUsers.length} Candidate Applications
+              </span>
+            </h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem;">
+              Candidates applying to work under ${activeHrObj.name} (${activeHrObj.department}). Approving generates an Employee ID and places them in your team.
+            </p>
+          </div>
+        </div>
+
+        ${pendingUsers.length === 0 ? `
+          <div style="text-align: center; padding: 1.75rem; color: var(--text-muted); font-size: 0.9rem;">
+            ✅ No pending sign-up requests for ${activeHrObj.name}. All candidate applications processed!
+          </div>
+        ` : `
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Applicant Name</th>
+                  <th>Contact Info</th>
+                  <th>Department / Company</th>
+                  <th>Applied Date</th>
+                  <th>Employee ID Status</th>
+                  <th>HR Decision</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pendingUsers.map(app => `
+                  <tr>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <img src="${app.avatar}" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-color);" />
+                        <div>
+                          <strong>${app.name}</strong>
+                          <div style="font-size: 0.75rem; color: var(--text-muted);">${app.position}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div style="font-size: 0.85rem;">${app.email}</div>
+                      <div style="font-size: 0.75rem; color: var(--text-muted);">${app.phone}</div>
+                    </td>
+                    <td>
+                      <strong style="font-size: 0.85rem;">${app.department}</strong>
+                      <div style="font-size: 0.75rem; color: var(--text-muted);">${app.companyName || 'Odoo India'}</div>
+                    </td>
+                    <td><span style="font-size: 0.85rem;">${app.appliedDate || app.joinDate}</span></td>
+                    <td>
+                      <span class="badge badge-warning" style="font-family: monospace; font-weight: 700;">⚠️ ID Pending Approval</span>
+                    </td>
+                    <td>
+                      <div style="display: flex; gap: 0.35rem;">
+                        <button class="btn btn-purple btn-sm btn-approve-applicant" data-email="${app.email}" data-name="${app.name}" title="Accept Applicant and Issue Employee ID">
+                          ✅ Accept & Issue ID
+                        </button>
+                        <button class="btn btn-secondary btn-sm btn-leave-pending" data-name="${app.name}" title="Leave application pending for review">
+                          ⏳ Leave Pending
+                        </button>
+                        <button class="btn btn-danger btn-sm btn-reject-applicant" data-email="${app.email}" data-name="${app.name}" title="Reject Applicant">
+                          ❌ Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
       </div>
 
       <!-- Employee Management & Directory Card -->
@@ -276,26 +371,26 @@ export class Dashboard {
             <h3 class="card-title" style="display: flex; align-items: center; gap: 0.5rem;">
               Employee Directory
               <span style="font-size: 0.75rem; font-weight: 500; color: var(--text-muted);">
-                (🟢 Present • ✈️ On Leave • 🟡 Absent)
+                (7 Employees under ${activeHrObj.name})
               </span>
             </h3>
           </div>
           
           <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <!-- HR Scope Filter Selector (View 7 Employees per HR or All 28 Employees) -->
+            <select id="admin-hr-scope-select" class="form-control" style="width: 230px; padding: 0.4rem 0.75rem; font-size: 0.85rem; font-weight: 700; background: var(--bg-surface-secondary); color: var(--primary-accent); border: 1px solid var(--primary-accent);">
+              <option value="${activeHrObj.id}" selected>👤 HR: ${activeHrObj.name} (7 Staff)</option>
+              <option value="all">🌐 All HR Teams (28 Employees)</option>
+              ${allHrs.filter(h => h.id !== activeHrObj.id).map(h => `<option value="${h.id}">👤 HR: ${h.name} (${h.department})</option>`).join('')}
+            </select>
+
             <!-- View Switcher Toggle (Grid Cards vs Table) -->
             <div style="display: flex; background: var(--bg-surface-secondary); border-radius: var(--radius-md); padding: 2px; border: 1px solid var(--border-color);">
               <button class="btn btn-sm btn-secondary active" id="btn-view-cards" title="Grid Cards View" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">🎴 Cards</button>
               <button class="btn btn-sm btn-secondary" id="btn-view-table" title="Table View" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">≡ Table</button>
             </div>
 
-            <input type="text" id="admin-emp-search" class="form-control" placeholder="Search by name, Login ID..." style="width: 210px; padding: 0.4rem 0.75rem; font-size: 0.85rem;" />
-            <select id="admin-emp-dept-filter" class="form-control" style="width: 160px; padding: 0.4rem 0.75rem; font-size: 0.85rem;">
-              <option value="">All Departments</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Product Design">Product Design</option>
-              <option value="Marketing">Marketing</option>
-              <option value="Human Resources">Human Resources</option>
-            </select>
+            <input type="text" id="admin-emp-search" class="form-control" placeholder="Search by name, ID..." style="width: 190px; padding: 0.4rem 0.75rem; font-size: 0.85rem;" />
             <button class="btn btn-purple btn-sm" id="btn-admin-add-emp">
               + Register Employee
             </button>
@@ -304,7 +399,7 @@ export class Dashboard {
 
         <!-- Grid Cards Container (Default View Mode) -->
         <div id="emp-cards-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.15rem; padding-top: 0.5rem;">
-          ${Dashboard.renderEmpCards(allUsers)}
+          ${Dashboard.renderEmpCards(approvedUsers)}
         </div>
 
         <!-- Table View Container (Optional Toggle) -->
@@ -321,7 +416,7 @@ export class Dashboard {
               </tr>
             </thead>
             <tbody id="admin-emp-table-body">
-              ${Dashboard.renderEmpRows(allUsers)}
+              ${Dashboard.renderEmpRows(approvedUsers)}
             </tbody>
           </table>
         </div>
@@ -330,10 +425,68 @@ export class Dashboard {
 
     container.innerHTML = html;
 
+    // Approve, Leave Pending & Reject Applicants Handlers
+    container.querySelectorAll('.btn-approve-applicant').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const email = e.currentTarget.getAttribute('data-email');
+        const name = e.currentTarget.getAttribute('data-name');
+        try {
+          const approvedUser = db.approveUser(email);
+          if (window.AppShowToast) window.AppShowToast(`✅ Application Accepted for ${name}! Issued Employee ID: ${approvedUser.id}`, 'success');
+          onNavigate('dashboard');
+        } catch (err) {
+          if (window.AppShowToast) window.AppShowToast(err.message, 'danger');
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-leave-pending').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const name = e.currentTarget.getAttribute('data-name');
+        if (window.AppShowToast) window.AppShowToast(`⏳ Application for ${name} left pending in queue.`, 'info');
+      });
+    });
+
+    container.querySelectorAll('.btn-reject-applicant').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const email = e.currentTarget.getAttribute('data-email');
+        const name = e.currentTarget.getAttribute('data-name');
+        if (confirm(`Are you sure you want to reject registration application from '${name}'?`)) {
+          db.rejectUser(email);
+          if (window.AppShowToast) window.AppShowToast(`Application request for ${name} rejected.`, 'info');
+          onNavigate('dashboard');
+        }
+      });
+    });
+
+    // HR Team Filter Switcher Handler
+    const hrScopeSelect = container.querySelector('#admin-hr-scope-select');
+    const searchInput = container.querySelector('#admin-emp-search');
+    const cardsContainer = container.querySelector('#emp-cards-container');
+    const tbody = container.querySelector('#admin-emp-table-body');
+
+    const updateDirectoryDisplay = () => {
+      const selectedHrScope = hrScopeSelect ? hrScopeSelect.value : currentHrId;
+      let targetList = selectedHrScope === 'all' 
+        ? db.getApprovedUsers() 
+        : db.getApprovedUsers(selectedHrScope);
+
+      const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+      if (query) {
+        targetList = targetList.filter(u => u.name.toLowerCase().includes(query) || u.id.toLowerCase().includes(query) || u.email.toLowerCase().includes(query));
+      }
+
+      if (cardsContainer) cardsContainer.innerHTML = Dashboard.renderEmpCards(targetList);
+      if (tbody) tbody.innerHTML = Dashboard.renderEmpRows(targetList);
+      Dashboard.bindEmpRowEvents(container, onNavigate);
+    };
+
+    hrScopeSelect?.addEventListener('change', updateDirectoryDisplay);
+    searchInput?.addEventListener('input', updateDirectoryDisplay);
+
     // View Switcher Handler
     const btnViewCards = container.querySelector('#btn-view-cards');
     const btnViewTable = container.querySelector('#btn-view-table');
-    const cardsContainer = container.querySelector('#emp-cards-container');
     const tableContainer = container.querySelector('#emp-table-container');
 
     btnViewCards?.addEventListener('click', () => {
@@ -349,27 +502,6 @@ export class Dashboard {
       if (cardsContainer) cardsContainer.style.display = 'none';
       if (tableContainer) tableContainer.style.display = 'block';
     });
-
-    // Attach Search & Department Filter logic
-    const searchInput = container.querySelector('#admin-emp-search');
-    const deptSelect = container.querySelector('#admin-emp-dept-filter');
-    const tbody = container.querySelector('#admin-emp-table-body');
-
-    const filterEmployees = () => {
-      const query = searchInput.value.toLowerCase().trim();
-      const dept = deptSelect.value;
-      const filtered = allUsers.filter(u => {
-        const matchQuery = !query || u.name.toLowerCase().includes(query) || u.id.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
-        const matchDept = !dept || u.department === dept;
-        return matchQuery && matchDept;
-      });
-      if (cardsContainer) cardsContainer.innerHTML = Dashboard.renderEmpCards(filtered);
-      if (tbody) tbody.innerHTML = Dashboard.renderEmpRows(filtered);
-      Dashboard.bindEmpRowEvents(container, onNavigate);
-    };
-
-    searchInput?.addEventListener('input', filterEmployees);
-    deptSelect?.addEventListener('change', filterEmployees);
 
     // Navigation & Modal triggers
     document.getElementById('card-admin-pending')?.addEventListener('click', () => onNavigate('leave'));

@@ -22,8 +22,8 @@ export class Auth {
       throw new Error('Invalid email/Login ID or password.');
     }
 
-    if (!user.verified) {
-      throw new Error('Please verify your account before logging in.');
+    if (user.status === 'pending' || !user.verified) {
+      throw new Error('⏳ Your sign-up request is pending HR approval under "New Applicants". You will receive your Employee ID once HR approves your application.');
     }
 
     Auth.currentUser = user;
@@ -31,7 +31,7 @@ export class Auth {
     return user;
   }
 
-  static register(userData) {
+  static register(userData, isHrCreation = false) {
     const { companyName, name, email, phone, password, confirmPassword, role, department, position, joinDate } = userData;
 
     if (!name || !email || !password) {
@@ -51,12 +51,18 @@ export class Auth {
       throw new Error('An account with this email address already exists.');
     }
 
-    // Auto-Generate Employee ID: [OI][First2_FirstName][First2_LastName][Year][Serial]
     const allUsers = db.getUsers();
-    const generatedId = generateEmployeeID(name, joinDate || new Date().toISOString(), allUsers);
+    const isApproved = Boolean(isHrCreation);
+
+    // Only issue generated Employee ID immediately if created directly by HR!
+    // Self-service sign ups receive Employee ID upon HR approval.
+    const generatedId = isApproved 
+      ? generateEmployeeID(name, joinDate || new Date().toISOString(), db.getApprovedUsers()) 
+      : 'PENDING';
 
     const newUser = {
       id: generatedId,
+      hrId: Number(userData.hrId || 1),
       name,
       email,
       password,
@@ -70,7 +76,9 @@ export class Auth {
       salary: { basic: 4500, hra: 1500, allowances: 800, deductions: 400 },
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
       leaveBalance: { paid: 15, sick: 10, casual: 5, unpaid: 0 },
-      verified: true
+      verified: isApproved,
+      status: isApproved ? 'approved' : 'pending',
+      appliedDate: new Date().toISOString().split('T')[0]
     };
 
     db.saveUser(newUser);

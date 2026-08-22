@@ -6,6 +6,7 @@ import { Profile } from './profile.js';
 import { Attendance } from './attendance.js';
 import { Leave } from './leave.js';
 import { Payroll } from './payroll.js';
+import { Projects } from './projects.js';
 import { Analytics } from './analytics.js';
 
 class App {
@@ -283,6 +284,9 @@ class App {
         case 'payroll':
           Payroll.render(targetSection, App.showToast);
           break;
+        case 'projects':
+          Projects.render(targetSection, App.showToast);
+          break;
         case 'analytics':
           Analytics.render(targetSection);
           break;
@@ -444,31 +448,37 @@ class App {
       }
     });
 
-    // Sign Up Form Handler
+    // Sign Up Form Handler (Candidate Job Application -> Pending HR Approval)
     document.getElementById('form-signup')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
       try {
         const data = Object.fromEntries(formData.entries());
-        const newUser = Auth.register(data);
-        Auth.login(newUser.id, newUser.password);
-        const autoPortal = newUser.role === 'admin' ? 'admin' : 'employee';
-        App.showToast(`Account registered successfully! Auto Login ID: ${newUser.id}`, 'success');
-        App.selectPortal(autoPortal);
+        data.hrId = Number(data.hrId || 1);
+        const newUser = Auth.register(data, false); // isHrCreation = false (Pending HR Approval)
+        App.showToast(`📋 Registration submitted for '${newUser.name}' under selected HR Manager! Your application is pending HR approval under "New Applicants".`, 'info');
+        
+        // Show Sign In card
+        const cardSignup = document.getElementById('card-signup');
+        const cardSignin = document.getElementById('card-signin');
+        if (cardSignup) cardSignup.style.display = 'none';
+        if (cardSignin) cardSignin.style.display = 'block';
+        const signupForm = document.getElementById('form-signup');
+        if (signupForm) signupForm.reset();
       } catch (err) {
         App.showToast(err.message, 'danger');
       }
     });
 
-    // Admin Add Employee Form Handler
+    // Admin Add Employee Form Handler (HR Direct Creation -> Auto Approved with Instant ID)
     document.getElementById('form-admin-add-emp')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
       try {
         const data = Object.fromEntries(formData.entries());
-        const newUser = Auth.register(data);
+        const newUser = Auth.register(data, true); // isHrCreation = true (Instant Approval & ID)
         document.getElementById('modal-add-employee')?.classList.remove('active');
-        App.showToast(`Employee Created! Generated Login ID: ${newUser.id}`, 'success');
+        App.showToast(`✅ Employee Created! Generated Employee ID: ${newUser.id}`, 'success');
         App.navigateTo('dashboard');
       } catch (err) {
         App.showToast(err.message, 'danger');
