@@ -47,6 +47,10 @@
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           Payroll
         </button>
+        <button class="nav-tab-item" data-view="projects">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+          Projects
+        </button>
         <button class="nav-tab-item" data-view="analytics">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
           HR Analytics
@@ -57,18 +61,30 @@
       <div class="nav-actions">
         <button class="btn btn-sm btn-secondary" id="btn-theme-toggle" title="Toggle Light/Dark Theme">☀️</button>
 
-        <div class="user-profile-menu" id="user-menu-trigger">
+        <div class="user-profile-menu" id="user-menu-trigger" style="position: relative; cursor: pointer;">
+          <span id="user-status-dot" class="status-indicator-dot red" title="Attendance Status: Checked Out" style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; display: inline-block; box-shadow: 0 0 8px rgba(239, 68, 68, 0.7); transition: all 0.3s ease;"></span>
           <img src="" id="user-avatar" class="avatar" alt="Avatar" />
           <div class="user-info">
             <span class="user-name" id="user-display-name">Guest</span>
             <span class="user-role" id="user-display-role">Log In Required</span>
           </div>
-        </div>
 
-        <button class="btn btn-secondary btn-sm" id="btn-switch-portal" title="Switch Portal Mode">🔄 Switch Mode</button>
-        <button class="btn btn-secondary btn-sm" id="btn-logout">
-          Logout
-        </button>
+          <!-- Profile Dropdown Menu (Wireframe Specs) -->
+          <div class="user-dropdown-menu" id="user-dropdown" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 210px; box-shadow: var(--shadow-lg); z-index: 1000; overflow: hidden;">
+            <div style="padding: 0.65rem 0.85rem; background: var(--bg-surface-secondary); border-bottom: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-muted);">
+              Work Status: <strong id="dropdown-status-label" style="color: #ef4444;">🔴 Checked Out</strong>
+            </div>
+            <a href="#" id="dropdown-my-profile" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 0.85rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem; border-bottom: 1px solid var(--border-color); transition: background 0.2s;">
+              👤 <strong>My Profile</strong>
+            </a>
+            <a href="#" id="dropdown-checkin-toggle" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 0.85rem; color: var(--primary-accent); text-decoration: none; font-size: 0.85rem; font-weight: 700; border-bottom: 1px solid var(--border-color); transition: background 0.2s;">
+              ⏱️ <span id="dropdown-checkin-text">Check IN →</span>
+            </a>
+            <a href="#" id="dropdown-logout" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 0.85rem; color: var(--status-absent); text-decoration: none; font-size: 0.85rem; transition: background 0.2s;">
+              🚪 <strong>Log Out</strong>
+            </a>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -80,6 +96,7 @@
         <section id="sec-attendance" class="view-section"></section>
         <section id="sec-leave" class="view-section"></section>
         <section id="sec-payroll" class="view-section"></section>
+        <section id="sec-projects" class="view-section"></section>
         <section id="sec-analytics" class="view-section"></section>
       </div>
     </main>
@@ -116,13 +133,13 @@
               
               <div class="form-group">
                 <label class="form-label">Login Id/Email :-</label>
-                <input type="text" class="form-control" name="emailOrId" placeholder="e.g. OISAJE20220001 or admin@dayflow.com" value="OIELVA20210001" required />
+                <input type="text" class="form-control" name="emailOrId" placeholder="Enter email or Login ID" required />
               </div>
               
               <div class="form-group">
                 <label class="form-label">Password :-</label>
                 <div class="pw-input-wrapper">
-                  <input type="password" class="form-control" id="signin-password" name="password" value="password123" required />
+                  <input type="password" class="form-control" id="signin-password" name="password" placeholder="Enter password" required />
                   <button type="button" class="btn-toggle-pw-square" data-target="signin-password" title="Toggle password visibility">👁️</button>
                 </div>
               </div>
@@ -188,6 +205,16 @@
                   <input type="password" class="form-control" id="signup-confirm-password" name="confirmPassword" placeholder="Re-enter password" required />
                   <button type="button" class="btn-toggle-pw-square" data-target="signup-confirm-password" title="Toggle visibility">👁️</button>
                 </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Apply Under HR Manager :-</label>
+                <select class="form-control" name="hrId" required style="background: var(--bg-surface-secondary); color: var(--text-main); font-weight: 600;">
+                  <option value="1">HR 1: Eleanor Vance — Engineering HR</option>
+                  <option value="2">HR 2: Marcus Vance — Product & Design HR</option>
+                  <option value="3">HR 3: Sophia Martinez — Marketing & Growth HR</option>
+                  <option value="4">HR 4: David Kim — Sales & Finance HR</option>
+                </select>
               </div>
 
 
@@ -280,13 +307,13 @@
 
           <div class="form-group">
             <label class="form-label" id="label-portal-id">Employee ID or Email :-</label>
-            <input type="text" class="form-control" id="portal-auth-id" name="emailOrId" placeholder="e.g. OISAJE20220001 or sarah@dayflow.com" required />
+            <input type="text" class="form-control" id="portal-auth-id" name="emailOrId" placeholder="Enter email or Login ID" required />
           </div>
 
           <div class="form-group">
             <label class="form-label">Password :-</label>
             <div class="pw-input-wrapper">
-              <input type="password" class="form-control" id="portal-auth-password" name="password" value="password123" placeholder="Enter password" required />
+              <input type="password" class="form-control" id="portal-auth-password" name="password" placeholder="Enter password" required />
               <button type="button" class="btn-toggle-pw-square" data-target="portal-auth-password" title="Toggle visibility">👁️</button>
             </div>
           </div>
@@ -357,7 +384,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">Initial Temp Password</label>
-            <input type="password" class="form-control" name="password" value="password123" required />
+            <input type="password" class="form-control" name="password" placeholder="Enter password" required />
           </div>
         </div>
         <div class="modal-footer">
